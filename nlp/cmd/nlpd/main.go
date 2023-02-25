@@ -3,24 +3,31 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/gorilla/mux"
 	"io"
 	"log"
 	"net/http"
 	"nlp"
 )
 
-func healthHandler(w http.ResponseWriter, r *http.Request) {
+type Server struct {
+	logger *log.Logger
+}
+
+func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "ok")
 }
 
-func tokenizeHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) tokenizeHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
+		s.logger.Printf("error: method not allowed")
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
+		s.logger.Printf("error: can't read from request - %s", err)
 		http.Error(w, "can't read from request", http.StatusBadRequest)
 		return
 	}
@@ -39,6 +46,7 @@ func tokenizeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	data, err = json.Marshal(resp)
 	if err != nil {
+		s.logger.Printf("error: can't marshal response - %s", err)
 		http.Error(w, "can't marshal response", http.StatusBadRequest)
 		return
 	}
@@ -48,10 +56,21 @@ func tokenizeHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	http.HandleFunc("/health", healthHandler)
-	http.HandleFunc("/tokenize", tokenizeHandler)
+	logger := log.New(log.Writer(), "[nlp] ", log.LstdFlags|log.Lshortfile)
+	s := Server{
+		logger: logger,
+	}
+	//http.HandleFunc("/health", healthHandler)
+	//http.HandleFunc("/tokenize", tokenizeHandler)
 
-	if err := http.ListenAndServe(":8080", nil); err != nil {
+	r := mux.NewRouter()
+	r.HandleFunc("/health", s.healthHandler).Methods(http.MethodGet)
+	r.HandleFunc("/tokenize", s.tokenizeHandler).Methods(http.MethodPost)
+	http.Handle("/", r)
+
+	addr := ":8080"
+	s.logger.Printf("server starting on %s", addr)
+	if err := http.ListenAndServe(addr, nil); err != nil {
 		log.Fatalf("error: %s", err)
 	}
 }
